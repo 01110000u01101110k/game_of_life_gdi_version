@@ -2,8 +2,14 @@ use windows::{core::*, Win32::Foundation::*, Win32::Graphics::Gdi::ValidateRect,
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::UI::WindowsAndMessaging::COLOR_WINDOW;
+use windows::Win32::Graphics::Gdi::SelectObject;
 use std::thread;
 use std::time::Duration;
+use lazy_static::lazy_static;
+use std::sync::Mutex;
+use windows::Win32::Devices::Display::COLORINFO;
+use winapi::um::wingdi::RGB;
+use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
 
 struct Cell {
     position_x: u32,
@@ -61,15 +67,17 @@ impl Cells {
 struct GameState {
     cells: Cells,
     is_game_on: bool,
-    is_game_over: bool
+    is_game_over: bool,
+    is_happened_change: bool
 }
 
 impl GameState {
     fn new() -> Self {
         let mut new_game_state = Self {
             cells: Cells::new(),
-            is_game_on: false,
-            is_game_over: false
+            is_game_on: true,
+            is_game_over: false,
+            is_happened_change: true
         };
         
         new_game_state.cells.fill_cells_array();
@@ -86,18 +94,102 @@ impl GameState {
     }
 }
 
+struct WindowsApiState {
+    hwnd: HWND,
+    width: i32,
+    height: i32,
+    yellow_pen: HPEN,
+    yellow_brush: HBRUSH
+}
+
+impl WindowsApiState {
+    fn new() -> Self {
+        unsafe {
+            Self {
+                hwnd: HWND::default(),
+                width: 0,
+                height: 0,
+                yellow_pen: CreatePen(PS_SOLID, 1, RGB(223, 180, 13)),
+                yellow_brush: CreateSolidBrush(RGB(223, 180, 13))
+            }
+        }
+    }
+    fn change_hwnd(&mut self, new_hwnd: HWND) {
+        self.hwnd = new_hwnd;
+    }
+}
+
 const APP_NAME: &str = "Game of life";
 
+lazy_static! {
+    static ref GAME_STATE: Mutex<GameState> = {
+        let data = GameState::new();
+        Mutex::new(data)
+    };
+    static ref WINDOW_STATE_INFO: Mutex<WindowsApiState> = {
+        let mut data = WindowsApiState::new();
+        Mutex::new(data)
+    };
+}
+
+fn draw_cell(paint_handle: HDC, window_state_info: &WindowsApiState, left_position: i32, top_position: i32, right_position: i32, bottom_position: i32) {
+    unsafe {
+        SelectObject(paint_handle, window_state_info.yellow_pen);
+        SelectObject(paint_handle, window_state_info.yellow_brush);
+
+        RoundRect(
+            paint_handle,
+            left_position,
+            top_position,
+            right_position,
+            bottom_position,
+            2,
+            2
+        );
+    }
+}
+
+fn fill_color_client_window_rect(paint_handle: HDC, paint_struct: PAINTSTRUCT, color: HBRUSH) {
+    unsafe {
+        FillRect(paint_handle, &paint_struct.rcPaint, color);
+    }
+}
+
+fn draw_cells() {
+    unsafe {
+        let size: i32 = 10;
+        let mut left_position: i32 = size;
+        let mut top_position: i32 = size;
+        let mut right_position: i32 = size * 2;
+        let mut bottom_position: i32 = size * 2;
+        
+        let window_state_info = WINDOW_STATE_INFO.lock().unwrap();
+        let mut paint_struct = PAINTSTRUCT::default();
+        let begin_paint = BeginPaint(window_state_info.hwnd, &mut paint_struct);
+
+        for cell in GAME_STATE.lock().unwrap().cells.cells_array.iter() {
+            println!("left_position {}", left_position);
+            fill_color_client_window_rect(begin_paint, paint_struct, HBRUSH((COLOR_WINDOW.0 + 1) as isize));
+            draw_cell(begin_paint, &window_state_info, left_position, top_position, right_position, bottom_position);
+            left_position = left_position + size;
+            //top_position = top_position + size;
+            right_position = top_position + size;
+            //bottom_position = top_position + size;
+        }
+
+        EndPaint(window_state_info.hwnd, &mut paint_struct);
+    }
+}
+
 fn start_game_loop() {
-    'game_loop: loop {
-        /*let mut game_state = GameState::new();
+    println!("{}", GAME_STATE.lock().unwrap().is_game_on);
 
-        if game_state.is_game_on {
-            
-        }*/
+    while GAME_STATE.lock().unwrap().is_game_on {
+        GAME_STATE.lock().unwrap().change_game_over_state();
 
-        println!("some game logic");
-        thread::sleep(Duration::from_millis(1000));
+        draw_cells();
+        println!("some game logic {:?}", WINDOW_STATE_INFO.lock().unwrap().hwnd);
+        thread::sleep(Duration::from_millis(1000)); // ограничиваю скорость обновления цикла игры
     }
 }
 
@@ -153,6 +245,11 @@ fn main() -> Result<()> {
 extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     unsafe {
         match message as u32 {
+            WM_CREATE => {
+                WINDOW_STATE_INFO.lock().unwrap().change_hwnd(window);
+
+                LRESULT(0)
+            }
             WM_CLOSE => {
                 if MessageBoxW(window, "Вы хотите закрыть приложение?", APP_NAME, MB_OKCANCEL) == IDOK {
                     DestroyWindow(window);
@@ -161,15 +258,15 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
             }
             WM_PAINT => {
                 println!("WM_PAINT");
-                //ValidateRect(window, std::ptr::null());
-                let mut paint_struct = PAINTSTRUCT::default();
-                let begin_paint = BeginPaint(window, &mut paint_struct);
 
-                // All painting occurs here, between BeginPaint and EndPaint.
+                let mut rect = RECT::default();
+                let window_size = GetClientRect(window, &mut rect);
 
-                FillRect(begin_paint, &paint_struct.rcPaint, HBRUSH((COLOR_WINDOW.0 + 1) as isize) );
+                WINDOW_STATE_INFO.lock().unwrap().width = rect.right;
+                WINDOW_STATE_INFO.lock().unwrap().height = rect.bottom;
 
-                EndPaint(window, &paint_struct);
+                draw_cells();
+
                 LRESULT(0)
             }
             WM_DESTROY => {

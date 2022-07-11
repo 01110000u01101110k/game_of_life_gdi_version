@@ -13,6 +13,14 @@ features = [
     "Win32_Graphics_Gdi",
     "Win32_System_LibraryLoader",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_Devices_Display"
+]
+
+[dependencies.winapi]
+version = "0.3.9"
+features = [
+    "wingdi",
 ]
 
 [dependencies]
+lazy_static = "1.4.0"
