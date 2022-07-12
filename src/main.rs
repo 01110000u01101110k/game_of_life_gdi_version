@@ -1,52 +1,77 @@
-use windows::{core::*, Win32::Foundation::*, Win32::Graphics::Gdi::ValidateRect, Win32::System::LibraryLoader::GetModuleHandleA, Win32::UI::WindowsAndMessaging::*};
-use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::Win32::Graphics::Gdi::*;
-use windows::Win32::UI::WindowsAndMessaging::COLOR_WINDOW;
-use windows::Win32::Graphics::Gdi::SelectObject;
-use std::thread;
-use std::time::Duration;
 use lazy_static::lazy_static;
 use std::sync::Mutex;
-use windows::Win32::Devices::Display::COLORINFO;
+use std::thread;
+use std::time::Duration;
 use winapi::um::wingdi::RGB;
+use windows::Win32::Devices::Display::COLORINFO;
+use windows::Win32::Graphics::Gdi::SelectObject;
+use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
-
+use windows::Win32::UI::WindowsAndMessaging::COLOR_WINDOW;
+use windows::Win32::UI::WindowsAndMessaging::*;
+use windows::{
+    core::*, Win32::Foundation::*, Win32::Graphics::Gdi::ValidateRect,
+    Win32::System::LibraryLoader::GetModuleHandleA, Win32::UI::WindowsAndMessaging::*,
+};
+use rand::{thread_rng, Rng};
+#[derive(Debug, Copy, Clone)]
 struct Cell {
+    is_fill: bool,
     position_x: u32,
-    position_y: u32
+    position_y: u32,
+}
+#[derive(Debug)]
+struct Cells {
+    cells_array: Vec<Vec<Cell>>,
+    change_event: bool,
 }
 
-struct Cells {
-    cells_array: Vec<Cell>,
-    change_event: bool
-}
+const MAX_COLUMN_COUNT: u32 = 169;
+const MAX_ROWS_COUNT: u32 = 87;
 
 impl Cells {
     fn new() -> Self {
         Self {
             cells_array: Vec::new(),
-            change_event: true
+            change_event: true,
         }
     }
 
     fn fill_cells_array(&mut self) {
         if self.cells_array.len() == 0 {
-            let total_count = 20;
-            let mut x = 0;
-            let mut y = 0;
+            let total_count = 14703;
+            let mut x: u32 = 1;
+            let mut y: u32 = 1;
 
-            while x + y != total_count {
-                if x < 10 {
-                    x += 1;
+            let mut iter = 0;
+
+            let mut is_fill: bool = false;
+
+            let mut rand_rng = rand::thread_rng();
+
+            self.cells_array.push(Vec::new());
+
+            while iter != total_count {
+                if rand_rng.gen_range(0..2) == 1 {
+                    is_fill = true;
                 } else {
-                    x = 0;
-                    y += 1;
+                    is_fill = false;
                 }
 
-                self.cells_array.push(Cell {
+                self.cells_array[(y - 1) as usize].push(Cell {
+                    is_fill: is_fill,
                     position_x: x,
-                    position_y: y
-                })
+                    position_y: y,
+                });
+
+                if x < MAX_COLUMN_COUNT {
+                    x += 1;
+                } else {
+                    self.cells_array.push(Vec::new());
+                    x = 1;
+                    y += 1;
+                }
+                iter += 1;
             }
         }
     }
@@ -68,7 +93,7 @@ struct GameState {
     cells: Cells,
     is_game_on: bool,
     is_game_over: bool,
-    is_happened_change: bool
+    is_happened_change: bool,
 }
 
 impl GameState {
@@ -77,9 +102,9 @@ impl GameState {
             cells: Cells::new(),
             is_game_on: true,
             is_game_over: false,
-            is_happened_change: true
+            is_happened_change: true,
         };
-        
+
         new_game_state.cells.fill_cells_array();
 
         new_game_state
@@ -96,10 +121,11 @@ impl GameState {
 
 struct WindowsApiState {
     hwnd: HWND,
+    rect: RECT,
     width: i32,
     height: i32,
     yellow_pen: HPEN,
-    yellow_brush: HBRUSH
+    yellow_brush: HBRUSH,
 }
 
 impl WindowsApiState {
@@ -107,10 +133,11 @@ impl WindowsApiState {
         unsafe {
             Self {
                 hwnd: HWND::default(),
+                rect: RECT::default(),
                 width: 0,
                 height: 0,
                 yellow_pen: CreatePen(PS_SOLID, 1, RGB(223, 180, 13)),
-                yellow_brush: CreateSolidBrush(RGB(223, 180, 13))
+                yellow_brush: CreateSolidBrush(RGB(223, 180, 13)),
             }
         }
     }
@@ -132,7 +159,14 @@ lazy_static! {
     };
 }
 
-fn draw_cell(paint_handle: HDC, window_state_info: &WindowsApiState, left_position: i32, top_position: i32, right_position: i32, bottom_position: i32) {
+fn draw_cell(
+    paint_handle: HDC,
+    window_state_info: &WindowsApiState,
+    left_position: i32,
+    top_position: i32,
+    right_position: i32,
+    bottom_position: i32,
+) {
     unsafe {
         SelectObject(paint_handle, window_state_info.yellow_pen);
         SelectObject(paint_handle, window_state_info.yellow_brush);
@@ -144,52 +178,139 @@ fn draw_cell(paint_handle: HDC, window_state_info: &WindowsApiState, left_positi
             right_position,
             bottom_position,
             2,
-            2
+            2,
         );
     }
 }
 
-fn fill_color_client_window_rect(paint_handle: HDC, paint_struct: PAINTSTRUCT, color: HBRUSH) {
-    unsafe {
-        FillRect(paint_handle, &paint_struct.rcPaint, color);
+fn cell_status_update() {
+    let cells_arr_copy = GAME_STATE.lock().unwrap().cells.cells_array.clone();
+    let mut new_cells_array = GAME_STATE.lock().unwrap().cells.cells_array.clone();
+
+    for cell_column in cells_arr_copy.iter() {
+        for cell in cell_column {
+            let mut near_cells: Vec<Cell> = Vec::new();
+
+            let cell_position_x: i32 = (cell.position_x - 1) as i32;
+            let cell_position_y: i32 = (cell.position_y - 1) as i32;
+
+            if cell_position_x - 1 > -1 && cell_position_y - 1 > -1 {
+                near_cells.push(cells_arr_copy[(cell_position_y - 1) as usize][(cell_position_x - 1) as usize]);
+            }
+
+            if cell_position_y - 1 > -1 && cell_position_x < MAX_COLUMN_COUNT as i32 {
+                near_cells.push(cells_arr_copy[(cell_position_y - 1) as usize][cell_position_x as usize]);
+            }
+
+            if cell_position_y - 1 > -1 && cell_position_x + 1 < MAX_COLUMN_COUNT as i32 {
+                near_cells.push(cells_arr_copy[(cell_position_y - 1) as usize][(cell_position_x + 1) as usize]);
+            }
+
+
+            if cell_position_x - 1 > -1 && cell_position_y < MAX_ROWS_COUNT as i32 {
+                near_cells.push(cells_arr_copy[cell_position_y as usize][(cell_position_x - 1) as usize]);
+            }
+
+            if cell_position_x + 1 < MAX_COLUMN_COUNT as i32 && cell_position_y < MAX_ROWS_COUNT as i32 {
+                near_cells.push(cells_arr_copy[cell_position_y as usize][(cell_position_x + 1) as usize]);
+            }
+
+            
+            if cell_position_x - 1 > -1 && cell_position_y + 1 < MAX_ROWS_COUNT as i32 {
+                near_cells.push(cells_arr_copy[(cell_position_y + 1) as usize][(cell_position_x - 1) as usize]);
+            }
+
+            if cell_position_y + 1 < MAX_ROWS_COUNT as i32 && cell_position_x < MAX_COLUMN_COUNT as i32 {
+                near_cells.push(cells_arr_copy[(cell_position_y + 1) as usize][cell_position_x as usize]);
+            }
+
+            if cell_position_x + 1 < MAX_COLUMN_COUNT as i32 && cell_position_y + 1 < MAX_ROWS_COUNT as i32 {
+                near_cells.push(cells_arr_copy[(cell_position_y + 1) as usize][(cell_position_x + 1) as usize]);
+            }
+
+            let mut count_near_cells = 0;
+
+            for curent_near_cell in near_cells {
+                if curent_near_cell.is_fill {
+                    count_near_cells += 1;
+                }
+            }
+
+            if !cell.is_fill && count_near_cells == 3 {
+                new_cells_array[cell_position_y as usize][cell_position_x as usize].is_fill = true;
+            } else if cell.is_fill && (count_near_cells < 2 || count_near_cells > 3) {
+                new_cells_array[cell_position_y as usize][cell_position_x as usize].is_fill = false;
+            }
+        }
+    }
+
+    GAME_STATE.lock().unwrap().cells.cells_array = new_cells_array;
+}
+
+fn draw_cells(begin_paint: HDC, window_state_info: &WindowsApiState) {
+    let size: i32 = 10;
+    let mut left_position: i32 = size;
+    let mut top_position: i32 = size;
+    let mut right_position: i32 = size * 2;
+    let mut bottom_position: i32 = size * 2;
+
+    let mut prev_cell_position_y: u32 = 1;
+
+    for cell_column in GAME_STATE.lock().unwrap().cells.cells_array.iter() {
+        for cell in cell_column {
+            if prev_cell_position_y < cell.position_y {
+                left_position = size;
+                top_position = top_position + size;
+                right_position = size * 2;
+                bottom_position = bottom_position + size;
+            }
+
+            if cell.is_fill {
+                draw_cell(
+                    begin_paint,
+                    &window_state_info,
+                    left_position,
+                    top_position,
+                    right_position,
+                    bottom_position,
+                );
+            }
+
+            left_position = left_position + size;
+            right_position = right_position + size;
+
+            prev_cell_position_y = cell.position_y;
+        }
     }
 }
 
-fn draw_cells() {
+fn draw() {
     unsafe {
-        let size: i32 = 10;
-        let mut left_position: i32 = size;
-        let mut top_position: i32 = size;
-        let mut right_position: i32 = size * 2;
-        let mut bottom_position: i32 = size * 2;
-        
         let window_state_info = WINDOW_STATE_INFO.lock().unwrap();
         let mut paint_struct = PAINTSTRUCT::default();
         let begin_paint = BeginPaint(window_state_info.hwnd, &mut paint_struct);
 
-        for cell in GAME_STATE.lock().unwrap().cells.cells_array.iter() {
-            println!("left_position {}", left_position);
-            fill_color_client_window_rect(begin_paint, paint_struct, HBRUSH((COLOR_WINDOW.0 + 1) as isize));
-            draw_cell(begin_paint, &window_state_info, left_position, top_position, right_position, bottom_position);
-            left_position = left_position + size;
-            //top_position = top_position + size;
-            right_position = top_position + size;
-            //bottom_position = top_position + size;
-        }
+        draw_cells(begin_paint, &window_state_info);
 
         EndPaint(window_state_info.hwnd, &mut paint_struct);
     }
 }
 
+fn check_rules_and_draw() {
+    cell_status_update();
+    //println!("data {:?}", GAME_STATE.lock().unwrap().cells.cells_array[0][(MAX_COLUMN_COUNT - 1) as usize]);
+
+    draw();
+}
+
 fn start_game_loop() {
-    println!("{}", GAME_STATE.lock().unwrap().is_game_on);
-
     while GAME_STATE.lock().unwrap().is_game_on {
-        GAME_STATE.lock().unwrap().change_game_over_state();
-
-        draw_cells();
-        println!("some game logic {:?}", WINDOW_STATE_INFO.lock().unwrap().hwnd);
-        thread::sleep(Duration::from_millis(1000)); // ограничиваю скорость обновления цикла игры
+        unsafe{
+            let window_state = WINDOW_STATE_INFO.lock().unwrap();
+            RedrawWindow(window_state.hwnd, &window_state.rect, None, RDW_INVALIDATE | RDW_FRAME | RDW_ERASE | RDW_ALLCHILDREN);
+        }
+        println!("draw");
+        thread::sleep(Duration::from_millis(100)); // ограничиваю скорость обновления цикла игры
     }
 }
 
@@ -204,6 +325,7 @@ fn main() -> Result<()> {
             hCursor: LoadCursorW(None, IDC_ARROW)?,
             hInstance: instance,
             lpszClassName: PCSTR(b"window\0".as_ptr()),
+            hbrBackground: CreateSolidBrush(RGB(51, 51, 51)),
 
             style: CS_HREDRAW | CS_VREDRAW,
             lpfnWndProc: Some(wndproc),
@@ -214,21 +336,22 @@ fn main() -> Result<()> {
         debug_assert!(atom != 0);
 
         CreateWindowExA(
-            Default::default(), 
-            window_class, 
-            APP_NAME, 
-            WS_OVERLAPPEDWINDOW | WS_VISIBLE, 
-            CW_USEDEFAULT, 
-            CW_USEDEFAULT, 
-            CW_USEDEFAULT, 
-            CW_USEDEFAULT, 
-            None, 
-            None, 
-            instance, 
-            std::ptr::null()
+            Default::default(),
+            window_class,
+            APP_NAME,
+            WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            None,
+            None,
+            instance,
+            std::ptr::null(),
         );
 
-        thread::spawn(|| { // запускаю поток, для работы игрового цикла, что-бы не блокировать цикл обработки событий окна, при долгой обработке игровой логики
+        thread::spawn(|| {
+            // запускаю поток, для работы игрового цикла, что-бы не блокировать цикл обработки событий окна, при долгой обработке игровой логики
             start_game_loop(); // запускаю игровой цикл
         });
 
@@ -248,12 +371,36 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
             WM_CREATE => {
                 WINDOW_STATE_INFO.lock().unwrap().change_hwnd(window);
 
+                let mut rect = RECT::default();
+                let window_size = GetClientRect(window, &mut rect);
+
+                WINDOW_STATE_INFO.lock().unwrap().rect = rect;
+                WINDOW_STATE_INFO.lock().unwrap().width = rect.right;
+                WINDOW_STATE_INFO.lock().unwrap().height = rect.bottom;
+
                 LRESULT(0)
             }
             WM_CLOSE => {
-                if MessageBoxW(window, "Вы хотите закрыть приложение?", APP_NAME, MB_OKCANCEL) == IDOK {
+                if MessageBoxW(
+                    window,
+                    "Вы хотите закрыть приложение?",
+                    APP_NAME,
+                    MB_OKCANCEL,
+                ) == IDOK
+                {
                     DestroyWindow(window);
                 }
+                LRESULT(0)
+            }
+            WM_SIZING => {
+                println!("WM_SIZING");
+                let mut rect = RECT::default();
+                let window_size = GetClientRect(window, &mut rect);
+
+                WINDOW_STATE_INFO.lock().unwrap().rect = rect;
+                WINDOW_STATE_INFO.lock().unwrap().width = rect.right;
+                WINDOW_STATE_INFO.lock().unwrap().height = rect.bottom;
+
                 LRESULT(0)
             }
             WM_PAINT => {
@@ -262,10 +409,9 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
                 let mut rect = RECT::default();
                 let window_size = GetClientRect(window, &mut rect);
 
-                WINDOW_STATE_INFO.lock().unwrap().width = rect.right;
-                WINDOW_STATE_INFO.lock().unwrap().height = rect.bottom;
+                WINDOW_STATE_INFO.lock().unwrap().rect = rect;
 
-                draw_cells();
+                check_rules_and_draw();
 
                 LRESULT(0)
             }
