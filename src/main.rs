@@ -26,8 +26,8 @@ struct Cells {
     change_event: bool,
 }
 
-const MAX_COLUMN_COUNT: u32 = 169;
-const MAX_ROWS_COUNT: u32 = 87;
+const MAX_COLUMN_COUNT: u32 = 120;
+const MAX_ROWS_COUNT: u32 = 60;
 
 impl Cells {
     fn new() -> Self {
@@ -39,7 +39,7 @@ impl Cells {
 
     fn fill_cells_array(&mut self) {
         if self.cells_array.len() == 0 {
-            let total_count = 14703;
+            let total_count = MAX_COLUMN_COUNT * MAX_ROWS_COUNT;
             let mut x: u32 = 1;
             let mut y: u32 = 1;
 
@@ -126,18 +126,27 @@ struct WindowsApiState {
     height: i32,
     yellow_pen: HPEN,
     yellow_brush: HBRUSH,
+    grey_pen: HPEN,
+    grey_brush: HBRUSH,
 }
 
 impl WindowsApiState {
     fn new() -> Self {
         unsafe {
+            let yellow_pen: HPEN = CreatePen(PS_SOLID, 1, RGB(223, 180, 13));
+            let yellow_brush: HBRUSH = CreateSolidBrush(RGB(223, 180, 13));
+            let grey_pen: HPEN = CreatePen(PS_SOLID, 1, RGB(51, 51, 51));
+            let grey_brush: HBRUSH = CreateSolidBrush(RGB(51, 51, 51));
+
             Self {
                 hwnd: HWND::default(),
                 rect: RECT::default(),
                 width: 0,
                 height: 0,
-                yellow_pen: CreatePen(PS_SOLID, 1, RGB(223, 180, 13)),
-                yellow_brush: CreateSolidBrush(RGB(223, 180, 13)),
+                yellow_pen: yellow_pen,
+                yellow_brush: yellow_brush,
+                grey_pen: grey_pen,
+                grey_brush: grey_brush,
             }
         }
     }
@@ -162,14 +171,16 @@ lazy_static! {
 fn draw_cell(
     paint_handle: HDC,
     window_state_info: &WindowsApiState,
+    pen: HPEN,
+    brush: HBRUSH,
     left_position: i32,
     top_position: i32,
     right_position: i32,
     bottom_position: i32,
 ) {
     unsafe {
-        SelectObject(paint_handle, window_state_info.yellow_pen);
-        SelectObject(paint_handle, window_state_info.yellow_brush);
+        let pen = SelectObject(paint_handle, pen);
+        let brush = SelectObject(paint_handle, brush);
 
         RoundRect(
             paint_handle,
@@ -180,6 +191,9 @@ fn draw_cell(
             2,
             2,
         );
+
+        /*DeleteObject(pen);
+        DeleteObject(brush);*/
     }
 }
 
@@ -248,7 +262,7 @@ fn cell_status_update() {
 }
 
 fn draw_cells(begin_paint: HDC, window_state_info: &WindowsApiState) {
-    let size: i32 = 10;
+    let size: i32 = 14;
     let mut left_position: i32 = size;
     let mut top_position: i32 = size;
     let mut right_position: i32 = size * 2;
@@ -269,6 +283,19 @@ fn draw_cells(begin_paint: HDC, window_state_info: &WindowsApiState) {
                 draw_cell(
                     begin_paint,
                     &window_state_info,
+                    window_state_info.yellow_pen,
+                    window_state_info.yellow_brush,
+                    left_position,
+                    top_position,
+                    right_position,
+                    bottom_position,
+                );
+            } else {
+                draw_cell(
+                    begin_paint,
+                    &window_state_info,
+                    window_state_info.grey_pen,
+                    window_state_info.grey_brush,
                     left_position,
                     top_position,
                     right_position,
@@ -298,8 +325,6 @@ fn draw() {
 
 fn check_rules_and_draw() {
     cell_status_update();
-    //println!("data {:?}", GAME_STATE.lock().unwrap().cells.cells_array[0][(MAX_COLUMN_COUNT - 1) as usize]);
-
     draw();
 }
 
@@ -307,9 +332,9 @@ fn start_game_loop() {
     while GAME_STATE.lock().unwrap().is_game_on {
         unsafe{
             let window_state = WINDOW_STATE_INFO.lock().unwrap();
-            RedrawWindow(window_state.hwnd, &window_state.rect, None, RDW_INVALIDATE | RDW_FRAME | RDW_ERASE | RDW_ALLCHILDREN);
+            //RedrawWindow(window_state.hwnd, &window_state.rect, None, RDW_INVALIDATE | RDW_FRAME | RDW_ERASE | RDW_ALLCHILDREN);
+            InvalidateRect(window_state.hwnd, &window_state.rect, false);
         }
-        println!("draw");
         thread::sleep(Duration::from_millis(100)); // ограничиваю скорость обновления цикла игры
     }
 }
@@ -321,11 +346,13 @@ fn main() -> Result<()> {
 
         let window_class = "window";
 
+        let background: HBRUSH = CreateSolidBrush(RGB(28, 28, 28));
+
         let wc = WNDCLASSA {
             hCursor: LoadCursorW(None, IDC_ARROW)?,
             hInstance: instance,
             lpszClassName: PCSTR(b"window\0".as_ptr()),
-            hbrBackground: CreateSolidBrush(RGB(51, 51, 51)),
+            hbrBackground: background,
 
             style: CS_HREDRAW | CS_VREDRAW,
             lpfnWndProc: Some(wndproc),
@@ -350,11 +377,6 @@ fn main() -> Result<()> {
             std::ptr::null(),
         );
 
-        thread::spawn(|| {
-            // запускаю поток, для работы игрового цикла, что-бы не блокировать цикл обработки событий окна, при долгой обработке игровой логики
-            start_game_loop(); // запускаю игровой цикл
-        });
-
         let mut message = MSG::default();
 
         while GetMessageA(&mut message, HWND(0), 0, 0).into() {
@@ -378,6 +400,11 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
                 WINDOW_STATE_INFO.lock().unwrap().width = rect.right;
                 WINDOW_STATE_INFO.lock().unwrap().height = rect.bottom;
 
+                thread::spawn(|| {
+                    // запускаю поток, для работы игрового цикла, что-бы не блокировать цикл обработки событий окна, при долгой обработке игровой логики
+                    start_game_loop(); // запускаю игровой цикл
+                });
+
                 LRESULT(0)
             }
             WM_CLOSE => {
@@ -392,9 +419,8 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
                 }
                 LRESULT(0)
             }
-            WM_SIZING => {
-                println!("WM_SIZING");
-                let mut rect = RECT::default();
+            WM_SIZE => {
+                let mut rect = WINDOW_STATE_INFO.lock().unwrap().rect;
                 let window_size = GetClientRect(window, &mut rect);
 
                 WINDOW_STATE_INFO.lock().unwrap().rect = rect;
@@ -404,19 +430,11 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
                 LRESULT(0)
             }
             WM_PAINT => {
-                println!("WM_PAINT");
-
-                let mut rect = RECT::default();
-                let window_size = GetClientRect(window, &mut rect);
-
-                WINDOW_STATE_INFO.lock().unwrap().rect = rect;
-
                 check_rules_and_draw();
 
                 LRESULT(0)
             }
             WM_DESTROY => {
-                println!("WM_DESTROY");
                 PostQuitMessage(0);
                 LRESULT(0)
             }
