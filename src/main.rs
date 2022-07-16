@@ -3,17 +3,15 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use winapi::um::wingdi::RGB;
-use windows::Win32::Devices::Display::COLORINFO;
 use windows::Win32::Graphics::Gdi::SelectObject;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
-use windows::Win32::UI::WindowsAndMessaging::COLOR_WINDOW;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::{
-    core::*, Win32::Foundation::*, Win32::Graphics::Gdi::ValidateRect,
-    Win32::System::LibraryLoader::GetModuleHandleA, Win32::UI::WindowsAndMessaging::*,
+    core::*, Win32::Foundation::*, Win32::System::LibraryLoader::GetModuleHandleA,
 };
-use rand::{thread_rng, Rng};
+use rand::Rng;
+
 #[derive(Debug, Copy, Clone)]
 struct Cell {
     is_fill: bool,
@@ -22,8 +20,7 @@ struct Cell {
 }
 #[derive(Debug)]
 struct Cells {
-    cells_array: Vec<Vec<Cell>>,
-    change_event: bool,
+    cells_array: Vec<Vec<Cell>>
 }
 
 const MAX_COLUMN_COUNT: u32 = 120;
@@ -32,8 +29,7 @@ const MAX_ROWS_COUNT: u32 = 60;
 impl Cells {
     fn new() -> Self {
         Self {
-            cells_array: Vec::new(),
-            change_event: true,
+            cells_array: Vec::new()
         }
     }
 
@@ -75,25 +71,12 @@ impl Cells {
             }
         }
     }
-
-    fn change_event_to_true(&mut self) {
-        if !self.change_event {
-            self.change_event = true;
-        }
-    }
-
-    fn change_event_to_false(&mut self) {
-        if self.change_event {
-            self.change_event = false;
-        }
-    }
 }
 
 struct GameState {
     cells: Cells,
     is_game_on: bool,
-    is_game_over: bool,
-    is_happened_change: bool,
+    is_game_over: bool
 }
 
 impl GameState {
@@ -101,8 +84,7 @@ impl GameState {
         let mut new_game_state = Self {
             cells: Cells::new(),
             is_game_on: true,
-            is_game_over: false,
-            is_happened_change: true,
+            is_game_over: false
         };
 
         new_game_state.cells.fill_cells_array();
@@ -163,7 +145,7 @@ lazy_static! {
         Mutex::new(data)
     };
     static ref WINDOW_STATE_INFO: Mutex<WindowsApiState> = {
-        let mut data = WindowsApiState::new();
+        let data = WindowsApiState::new();
         Mutex::new(data)
     };
 }
@@ -317,6 +299,11 @@ fn draw() {
         let mut paint_struct = PAINTSTRUCT::default();
         let begin_paint = BeginPaint(window_state_info.hwnd, &mut paint_struct);
 
+        /*FillRect(
+            begin_paint,
+            &window_state_info.rect,
+            window_state_info.grey_brush
+        );*/
         draw_cells(begin_paint, &window_state_info);
 
         EndPaint(window_state_info.hwnd, &mut paint_struct);
@@ -434,6 +421,10 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
 
                 LRESULT(0)
             }
+            /*WM_ERASEBKGND => {
+
+                LRESULT(0)
+            }*/
             WM_DESTROY => {
                 PostQuitMessage(0);
                 LRESULT(0)
