@@ -24,6 +24,8 @@ struct Cells {
 const MAX_COLUMN_COUNT: u32 = 425;
 const MAX_ROWS_COUNT: u32 = 220;
 
+const MINIMAL_UPDATE_DELAY: u8 = 10;
+
 impl Cells {
     fn new() -> Self {
         Self {
@@ -73,6 +75,7 @@ impl Cells {
 
 struct GameState {
     cells: Cells,
+    fps: String,
     is_game_on: bool,
     is_game_over: bool,
 }
@@ -81,6 +84,7 @@ impl GameState {
     fn new() -> Self {
         let mut new_game_state = Self {
             cells: Cells::new(),
+            fps: String::from("fps: 0"),
             is_game_on: true,
             is_game_over: false,
         };
@@ -332,6 +336,9 @@ fn draw() {
         );*/
         draw_cells(mem_dc, &window_state_info);
 
+        let fps = GAME_STATE.lock().unwrap().fps.clone();
+        TextOutA(mem_dc, 4, 4, fps.as_bytes());
+
         BitBlt(
             begin_paint,
             0,
@@ -354,10 +361,11 @@ fn draw() {
 }
 
 fn check_rules_and_draw() {
-    //let update_time = Instant::now();
+    let update_time = Instant::now();
     cell_status_update();
     draw();
-    //println!("fps {}", 1000 / update_time.elapsed().as_millis());
+    
+    GAME_STATE.lock().unwrap().fps = format!("fps: {}", 1000 / (update_time.elapsed().as_millis() + MINIMAL_UPDATE_DELAY as u128));
 }
 
 fn start_game_loop() {
@@ -367,7 +375,7 @@ fn start_game_loop() {
             //RedrawWindow(window_state.hwnd, &window_state.rect, None, RDW_INVALIDATE | RDW_FRAME | RDW_ERASE | RDW_ALLCHILDREN);
             InvalidateRect(window_state.hwnd, &window_state.rect, false);
         }
-        thread::sleep(Duration::from_millis(20)); // ограничиваю максимальную скорость обновления цикла игры 50 fps
+        thread::sleep(Duration::from_millis(MINIMAL_UPDATE_DELAY as u64)); // ограничиваю максимальную скорость обновления цикла игры
     }
 }
 
