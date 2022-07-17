@@ -21,10 +21,10 @@ struct Cells {
     cells_array: Vec<Vec<Cell>>,
 }
 
-const MAX_COLUMN_COUNT: u32 = 425;
-const MAX_ROWS_COUNT: u32 = 220;
+const MAX_COLUMN_COUNT: u32 = 120;
+const MAX_ROWS_COUNT: u32 = 60;
 
-const MINIMAL_UPDATE_DELAY: u8 = 10;
+const MINIMAL_UPDATE_DELAY: u8 = 5;
 
 impl Cells {
     fn new() -> Self {
@@ -262,7 +262,7 @@ fn cell_status_update() {
 }
 
 fn draw_cells(begin_paint: CreatedHDC, window_state_info: &WindowsApiState) {
-    let size: i32 = 4;
+    let size: i32 = 14;
     let mut left_position: i32 = size;
     let mut top_position: i32 = size;
     let mut right_position: i32 = size * 2;
@@ -365,7 +365,7 @@ fn check_rules_and_draw() {
     cell_status_update();
     draw();
     
-    GAME_STATE.lock().unwrap().fps = format!("fps: {}", 1000 / (update_time.elapsed().as_millis() + MINIMAL_UPDATE_DELAY as u128));
+    GAME_STATE.lock().unwrap().fps = format!("fps: {}", 1000 / (update_time.elapsed().as_millis() + (MINIMAL_UPDATE_DELAY as u128)));
 }
 
 fn start_game_loop() {
