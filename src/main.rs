@@ -1,16 +1,14 @@
 use lazy_static::lazy_static;
+use rand::Rng;
 use std::sync::Mutex;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use winapi::um::wingdi::RGB;
 use windows::Win32::Graphics::Gdi::SelectObject;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::{
-    core::*, Win32::Foundation::*, Win32::System::LibraryLoader::GetModuleHandleA,
-};
-use rand::Rng;
+use windows::{core::*, Win32::Foundation::*, Win32::System::LibraryLoader::GetModuleHandleA};
 
 #[derive(Debug, Copy, Clone)]
 struct Cell {
@@ -20,7 +18,7 @@ struct Cell {
 }
 #[derive(Debug)]
 struct Cells {
-    cells_array: Vec<Vec<Cell>>
+    cells_array: Vec<Vec<Cell>>,
 }
 
 const MAX_COLUMN_COUNT: u32 = 120;
@@ -29,7 +27,7 @@ const MAX_ROWS_COUNT: u32 = 60;
 impl Cells {
     fn new() -> Self {
         Self {
-            cells_array: Vec::new()
+            cells_array: Vec::new(),
         }
     }
 
@@ -76,7 +74,7 @@ impl Cells {
 struct GameState {
     cells: Cells,
     is_game_on: bool,
-    is_game_over: bool
+    is_game_over: bool,
 }
 
 impl GameState {
@@ -84,7 +82,7 @@ impl GameState {
         let mut new_game_state = Self {
             cells: Cells::new(),
             is_game_on: true,
-            is_game_over: false
+            is_game_over: false,
         };
 
         new_game_state.cells.fill_cells_array();
@@ -117,8 +115,8 @@ impl WindowsApiState {
         unsafe {
             let yellow_pen: HPEN = CreatePen(PS_SOLID, 1, RGB(223, 180, 13));
             let yellow_brush: HBRUSH = CreateSolidBrush(RGB(223, 180, 13));
-            let grey_pen: HPEN = CreatePen(PS_SOLID, 1, RGB(51, 51, 51));
-            let grey_brush: HBRUSH = CreateSolidBrush(RGB(51, 51, 51));
+            let grey_pen: HPEN = CreatePen(PS_SOLID, 1, RGB(28, 28, 28));
+            let grey_brush: HBRUSH = CreateSolidBrush(RGB(28, 28, 28));
 
             Self {
                 hwnd: HWND::default(),
@@ -151,7 +149,7 @@ lazy_static! {
 }
 
 fn draw_cell(
-    paint_handle: HDC,
+    paint_handle: CreatedHDC,
     window_state_info: &WindowsApiState,
     pen: HPEN,
     brush: HBRUSH,
@@ -181,7 +179,7 @@ fn draw_cell(
 
 fn cell_status_update() {
     let cells_arr_copy = GAME_STATE.lock().unwrap().cells.cells_array.clone();
-    let mut new_cells_array = GAME_STATE.lock().unwrap().cells.cells_array.clone();
+    let mut new_cells_array = cells_arr_copy.clone();
 
     for cell_column in cells_arr_copy.iter() {
         for cell in cell_column {
@@ -191,37 +189,53 @@ fn cell_status_update() {
             let cell_position_y: i32 = (cell.position_y - 1) as i32;
 
             if cell_position_x - 1 > -1 && cell_position_y - 1 > -1 {
-                near_cells.push(cells_arr_copy[(cell_position_y - 1) as usize][(cell_position_x - 1) as usize]);
+                near_cells.push(
+                    cells_arr_copy[(cell_position_y - 1) as usize][(cell_position_x - 1) as usize],
+                );
             }
 
             if cell_position_y - 1 > -1 && cell_position_x < MAX_COLUMN_COUNT as i32 {
-                near_cells.push(cells_arr_copy[(cell_position_y - 1) as usize][cell_position_x as usize]);
+                near_cells
+                    .push(cells_arr_copy[(cell_position_y - 1) as usize][cell_position_x as usize]);
             }
 
             if cell_position_y - 1 > -1 && cell_position_x + 1 < MAX_COLUMN_COUNT as i32 {
-                near_cells.push(cells_arr_copy[(cell_position_y - 1) as usize][(cell_position_x + 1) as usize]);
+                near_cells.push(
+                    cells_arr_copy[(cell_position_y - 1) as usize][(cell_position_x + 1) as usize],
+                );
             }
-
 
             if cell_position_x - 1 > -1 && cell_position_y < MAX_ROWS_COUNT as i32 {
-                near_cells.push(cells_arr_copy[cell_position_y as usize][(cell_position_x - 1) as usize]);
+                near_cells
+                    .push(cells_arr_copy[cell_position_y as usize][(cell_position_x - 1) as usize]);
             }
 
-            if cell_position_x + 1 < MAX_COLUMN_COUNT as i32 && cell_position_y < MAX_ROWS_COUNT as i32 {
-                near_cells.push(cells_arr_copy[cell_position_y as usize][(cell_position_x + 1) as usize]);
+            if cell_position_x + 1 < MAX_COLUMN_COUNT as i32
+                && cell_position_y < MAX_ROWS_COUNT as i32
+            {
+                near_cells
+                    .push(cells_arr_copy[cell_position_y as usize][(cell_position_x + 1) as usize]);
             }
 
-            
             if cell_position_x - 1 > -1 && cell_position_y + 1 < MAX_ROWS_COUNT as i32 {
-                near_cells.push(cells_arr_copy[(cell_position_y + 1) as usize][(cell_position_x - 1) as usize]);
+                near_cells.push(
+                    cells_arr_copy[(cell_position_y + 1) as usize][(cell_position_x - 1) as usize],
+                );
             }
 
-            if cell_position_y + 1 < MAX_ROWS_COUNT as i32 && cell_position_x < MAX_COLUMN_COUNT as i32 {
-                near_cells.push(cells_arr_copy[(cell_position_y + 1) as usize][cell_position_x as usize]);
+            if cell_position_y + 1 < MAX_ROWS_COUNT as i32
+                && cell_position_x < MAX_COLUMN_COUNT as i32
+            {
+                near_cells
+                    .push(cells_arr_copy[(cell_position_y + 1) as usize][cell_position_x as usize]);
             }
 
-            if cell_position_x + 1 < MAX_COLUMN_COUNT as i32 && cell_position_y + 1 < MAX_ROWS_COUNT as i32 {
-                near_cells.push(cells_arr_copy[(cell_position_y + 1) as usize][(cell_position_x + 1) as usize]);
+            if cell_position_x + 1 < MAX_COLUMN_COUNT as i32
+                && cell_position_y + 1 < MAX_ROWS_COUNT as i32
+            {
+                near_cells.push(
+                    cells_arr_copy[(cell_position_y + 1) as usize][(cell_position_x + 1) as usize],
+                );
             }
 
             let mut count_near_cells = 0;
@@ -243,7 +257,7 @@ fn cell_status_update() {
     GAME_STATE.lock().unwrap().cells.cells_array = new_cells_array;
 }
 
-fn draw_cells(begin_paint: HDC, window_state_info: &WindowsApiState) {
+fn draw_cells(begin_paint: CreatedHDC, window_state_info: &WindowsApiState) {
     let size: i32 = 14;
     let mut left_position: i32 = size;
     let mut top_position: i32 = size;
@@ -260,7 +274,6 @@ fn draw_cells(begin_paint: HDC, window_state_info: &WindowsApiState) {
                 right_position = size * 2;
                 bottom_position = bottom_position + size;
             }
-
             if cell.is_fill {
                 draw_cell(
                     begin_paint,
@@ -299,30 +312,57 @@ fn draw() {
         let mut paint_struct = PAINTSTRUCT::default();
         let begin_paint = BeginPaint(window_state_info.hwnd, &mut paint_struct);
 
+        let mem_dc = CreateCompatibleDC(begin_paint);
+        let mem_bm = CreateCompatibleBitmap(
+            begin_paint,
+            window_state_info.width,
+            window_state_info.height,
+        );
+        SelectObject(mem_dc, mem_bm);
+
         /*FillRect(
             begin_paint,
             &window_state_info.rect,
             window_state_info.grey_brush
         );*/
-        draw_cells(begin_paint, &window_state_info);
+        draw_cells(mem_dc, &window_state_info);
+
+        BitBlt(
+            begin_paint,
+            0,
+            0,
+            window_state_info.width,
+            window_state_info.height,
+            mem_dc,
+            0,
+            0,
+            SRCCOPY,
+        );
+
+        // Освобождаем память
+        DeleteDC(mem_dc);
+        DeleteObject(mem_bm);
 
         EndPaint(window_state_info.hwnd, &mut paint_struct);
+        //ReleaseDC(None, begin_paint);
     }
 }
 
 fn check_rules_and_draw() {
+    //let update_time = Instant::now();
     cell_status_update();
     draw();
+    //println!("update time {}", update_time.elapsed().as_millis());
 }
 
 fn start_game_loop() {
     while GAME_STATE.lock().unwrap().is_game_on {
-        unsafe{
+        unsafe {
             let window_state = WINDOW_STATE_INFO.lock().unwrap();
             //RedrawWindow(window_state.hwnd, &window_state.rect, None, RDW_INVALIDATE | RDW_FRAME | RDW_ERASE | RDW_ALLCHILDREN);
             InvalidateRect(window_state.hwnd, &window_state.rect, false);
         }
-        thread::sleep(Duration::from_millis(100)); // ограничиваю скорость обновления цикла игры
+        thread::sleep(Duration::from_millis(1)); // ограничиваю скорость обновления цикла игры
     }
 }
 
