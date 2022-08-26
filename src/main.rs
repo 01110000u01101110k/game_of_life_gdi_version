@@ -116,11 +116,11 @@ struct WindowsApiState {
 
 impl WindowsApiState {
     fn new() -> Self {
-        unsafe {
-            let yellow_pen: HPEN = CreatePen(PS_SOLID, 1, RGB(223, 180, 13));
-            let yellow_brush: HBRUSH = CreateSolidBrush(RGB(223, 180, 13));
-            let grey_pen: HPEN = CreatePen(PS_SOLID, 1, RGB(28, 28, 28));
-            let grey_brush: HBRUSH = CreateSolidBrush(RGB(28, 28, 28));
+        
+            let yellow_pen: HPEN = unsafe { CreatePen(PS_SOLID, 1, RGB(223, 180, 13)) };
+            let yellow_brush: HBRUSH = unsafe { CreateSolidBrush(RGB(223, 180, 13)) };
+            let grey_pen: HPEN = unsafe { CreatePen(PS_SOLID, 1, RGB(28, 28, 28)) };
+            let grey_brush: HBRUSH = unsafe { CreateSolidBrush(RGB(28, 28, 28)) };
 
             Self {
                 hwnd: HWND::default(),
@@ -132,7 +132,7 @@ impl WindowsApiState {
                 grey_pen: grey_pen,
                 grey_brush: grey_brush,
             }
-        }
+        
     }
     fn change_hwnd(&mut self, new_hwnd: HWND) {
         self.hwnd = new_hwnd;
@@ -162,30 +162,31 @@ fn draw_cell(
     right_position: i32,
     bottom_position: i32,
 ) {
-    unsafe {
-        let pen = SelectObject(paint_handle, pen);
-        let brush = SelectObject(paint_handle, brush);
 
-        RoundRect(
-            paint_handle,
-            left_position,
-            top_position,
-            right_position,
-            bottom_position,
-            2,
-            2,
-        );
+        let pen = unsafe { SelectObject(paint_handle, pen) };
+        let brush = unsafe { SelectObject(paint_handle, brush) };
+
+        unsafe { 
+            RoundRect(
+                paint_handle,
+                left_position,
+                top_position,
+                right_position,
+                bottom_position,
+                2,
+                2,
+            )
+        };
 
         /*DeleteObject(pen);
         DeleteObject(brush);*/
-    }
 }
 
 fn cell_status_update() {
     let cells_arr_copy = GAME_STATE.lock().unwrap().cells.cells_array.clone();
     let mut new_cells_array = cells_arr_copy.clone();
 
-    for cell_column in cells_arr_copy.iter() {
+    for cell_column in &cells_arr_copy {
         for cell in cell_column {
             let mut near_cells: Vec<Cell> = Vec::new();
 
@@ -316,18 +317,22 @@ fn draw_cells(begin_paint: CreatedHDC, window_state_info: &WindowsApiState) {
 }
 
 fn draw() {
-    unsafe {
+    
         let window_state_info = WINDOW_STATE_INFO.lock().unwrap();
         let mut paint_struct = PAINTSTRUCT::default();
-        let begin_paint = BeginPaint(window_state_info.hwnd, &mut paint_struct);
+        let begin_paint = unsafe { BeginPaint(&window_state_info.hwnd, &mut paint_struct)};
 
-        let mem_dc = CreateCompatibleDC(begin_paint);
-        let mem_bm = CreateCompatibleBitmap(
-            begin_paint,
-            window_state_info.width,
-            window_state_info.height,
-        );
-        SelectObject(mem_dc, mem_bm);
+        let mem_dc = unsafe { CreateCompatibleDC(&begin_paint) };
+        let mem_bm = unsafe { 
+            CreateCompatibleBitmap(
+                &begin_paint,
+                window_state_info.width,
+                window_state_info.height,
+            )
+        };
+        unsafe {
+            SelectObject(mem_dc, mem_bm)
+        };
 
         /*FillRect(
             begin_paint,
@@ -337,27 +342,29 @@ fn draw() {
         draw_cells(mem_dc, &window_state_info);
 
         let fps = GAME_STATE.lock().unwrap().fps.clone();
-        TextOutA(mem_dc, 4, 4, fps.as_bytes());
+        unsafe { TextOutA(mem_dc, 4, 4, fps.as_bytes()) };
 
-        BitBlt(
-            begin_paint,
-            0,
-            0,
-            window_state_info.width,
-            window_state_info.height,
-            mem_dc,
-            0,
-            0,
-            SRCCOPY,
-        );
+        unsafe {
+            BitBlt(
+                &begin_paint,
+                0,
+                0,
+                window_state_info.width,
+                window_state_info.height,
+                mem_dc,
+                0,
+                0,
+                SRCCOPY,
+            )
+        };
 
         // Освобождаем память
-        DeleteDC(mem_dc);
-        DeleteObject(mem_bm);
+        unsafe { DeleteDC(mem_dc) };
+        unsafe { DeleteObject(mem_bm) };
 
-        EndPaint(window_state_info.hwnd, &mut paint_struct);
+        unsafe { EndPaint(&window_state_info.hwnd, &mut paint_struct) };
         //ReleaseDC(None, begin_paint);
-    }
+    
 }
 
 fn check_rules_and_draw() {
@@ -373,23 +380,23 @@ fn start_game_loop() {
         unsafe {
             let window_state = WINDOW_STATE_INFO.lock().unwrap();
             //RedrawWindow(window_state.hwnd, &window_state.rect, None, RDW_INVALIDATE | RDW_FRAME | RDW_ERASE | RDW_ALLCHILDREN);
-            InvalidateRect(window_state.hwnd, &window_state.rect, false);
+            InvalidateRect(&window_state.hwnd, &window_state.rect, false);
         }
         thread::sleep(Duration::from_millis(MINIMAL_UPDATE_DELAY as u64)); // ограничиваю максимальную скорость обновления цикла игры
     }
 }
 
 fn main() -> Result<()> {
-    unsafe {
-        let instance = GetModuleHandleA(None)?;
+    
+        let instance = unsafe {GetModuleHandleA(None)?};
         debug_assert!(instance.0 != 0);
 
         let window_class = "window";
 
-        let background: HBRUSH = CreateSolidBrush(RGB(28, 28, 28));
+        let background: HBRUSH = unsafe {CreateSolidBrush(RGB(28, 28, 28))};
 
         let wc = WNDCLASSA {
-            hCursor: LoadCursorW(None, IDC_ARROW)?,
+            hCursor: unsafe {LoadCursorW(None, IDC_ARROW)?},
             hInstance: instance,
             lpszClassName: PCSTR(b"window\0".as_ptr()),
             hbrBackground: background,
@@ -399,32 +406,34 @@ fn main() -> Result<()> {
             ..Default::default()
         };
 
-        let atom = RegisterClassA(&wc);
+        let atom = unsafe {RegisterClassA(&wc)};
         debug_assert!(atom != 0);
 
-        CreateWindowExA(
-            Default::default(),
-            window_class,
-            APP_NAME,
-            WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            None,
-            None,
-            instance,
-            std::ptr::null(),
-        );
+        unsafe {
+            CreateWindowExA(
+                Default::default(),
+                window_class,
+                APP_NAME,
+                WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                None,
+                None,
+                instance,
+                std::ptr::null(),
+            );
+        }
 
         let mut message = MSG::default();
 
-        while GetMessageA(&mut message, HWND(0), 0, 0).into() {
-            DispatchMessageA(&message);
+        while unsafe { GetMessageA(&mut message, HWND(0), 0, 0).into() } {
+            unsafe { DispatchMessageA(&message) };
         }
 
         Ok(())
-    }
+    
 }
 
 extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
