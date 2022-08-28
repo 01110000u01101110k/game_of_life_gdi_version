@@ -188,68 +188,64 @@ fn cell_status_update() {
 
     for cell_column in &cells_arr_copy {
         for cell in cell_column {
-            let mut near_cells: Vec<Cell> = Vec::new();
-
             let cell_position_x: i32 = (cell.position_x - 1) as i32;
             let cell_position_y: i32 = (cell.position_y - 1) as i32;
 
+            let mut count_near_cells = 0;
+
             if cell_position_x - 1 > -1 && cell_position_y - 1 > -1 {
-                near_cells.push(
-                    cells_arr_copy[(cell_position_y - 1) as usize][(cell_position_x - 1) as usize],
-                );
+                if cells_arr_copy[(cell_position_y - 1) as usize][(cell_position_x - 1) as usize].is_fill == 1 {
+                    count_near_cells += 1;
+                }
             }
 
             if cell_position_y - 1 > -1 && cell_position_x < MAX_COLUMN_COUNT as i32 {
-                near_cells
-                    .push(cells_arr_copy[(cell_position_y - 1) as usize][cell_position_x as usize]);
+                if cells_arr_copy[(cell_position_y - 1) as usize][cell_position_x as usize].is_fill == 1 {
+                    count_near_cells += 1;
+                }
             }
 
             if cell_position_y - 1 > -1 && cell_position_x + 1 < MAX_COLUMN_COUNT as i32 {
-                near_cells.push(
-                    cells_arr_copy[(cell_position_y - 1) as usize][(cell_position_x + 1) as usize],
-                );
+                if cells_arr_copy[(cell_position_y - 1) as usize][(cell_position_x + 1) as usize].is_fill == 1 {
+                    count_near_cells += 1;
+                }
             }
 
             if cell_position_x - 1 > -1 && cell_position_y < MAX_ROWS_COUNT as i32 {
-                near_cells
-                    .push(cells_arr_copy[cell_position_y as usize][(cell_position_x - 1) as usize]);
+                if cells_arr_copy[cell_position_y as usize][(cell_position_x - 1) as usize].is_fill == 1 {
+                    count_near_cells += 1;
+                }
             }
 
             if cell_position_x + 1 < MAX_COLUMN_COUNT as i32
                 && cell_position_y < MAX_ROWS_COUNT as i32
             {
-                near_cells
-                    .push(cells_arr_copy[cell_position_y as usize][(cell_position_x + 1) as usize]);
+                if cells_arr_copy[cell_position_y as usize][(cell_position_x + 1) as usize].is_fill == 1 {
+                    count_near_cells += 1;
+                }
             }
 
             if cell_position_x - 1 > -1 && cell_position_y + 1 < MAX_ROWS_COUNT as i32 {
-                near_cells.push(
-                    cells_arr_copy[(cell_position_y + 1) as usize][(cell_position_x - 1) as usize],
-                );
+                if cells_arr_copy[(cell_position_y + 1) as usize][(cell_position_x - 1) as usize].is_fill == 1 {
+                    count_near_cells += 1;
+                }
             }
 
             if cell_position_y + 1 < MAX_ROWS_COUNT as i32
                 && cell_position_x < MAX_COLUMN_COUNT as i32
             {
-                near_cells
-                    .push(cells_arr_copy[(cell_position_y + 1) as usize][cell_position_x as usize]);
+                if cells_arr_copy[(cell_position_y + 1) as usize][cell_position_x as usize].is_fill == 1 {
+                    count_near_cells += 1;
+                }
             }
 
             if cell_position_x + 1 < MAX_COLUMN_COUNT as i32
                 && cell_position_y + 1 < MAX_ROWS_COUNT as i32
             {
-                near_cells.push(
-                    cells_arr_copy[(cell_position_y + 1) as usize][(cell_position_x + 1) as usize],
-                );
-            }
-
-            let mut count_near_cells = 0;
-
-            for curent_near_cell in near_cells {
-                if curent_near_cell.is_fill == 1 {
+                if cells_arr_copy[(cell_position_y + 1) as usize][(cell_position_x + 1) as usize].is_fill == 1 {
                     count_near_cells += 1;
                 }
-            }
+            }    
 
             if (cell.is_fill == 0 || cell.is_fill == 2) && count_near_cells == 3 {
                 new_cells_array[cell_position_y as usize][cell_position_x as usize].is_fill = 1;
