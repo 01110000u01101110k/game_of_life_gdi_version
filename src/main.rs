@@ -371,12 +371,13 @@ fn check_rules_and_draw() {
     GAME_STATE.lock().unwrap().fps = format!("fps: {}", 1000 / (update_time.elapsed().as_millis() + (MINIMAL_UPDATE_DELAY as u128)));
 }
 
-fn start_game_loop() {
+fn start_game_loop(window: &HWND) {
     while GAME_STATE.lock().unwrap().is_game_on {
+        let rect = WINDOW_STATE_INFO.lock().unwrap().rect;
+
         unsafe {
-            let window_state = WINDOW_STATE_INFO.lock().unwrap();
             //RedrawWindow(window_state.hwnd, &window_state.rect, None, RDW_INVALIDATE | RDW_FRAME | RDW_ERASE | RDW_ALLCHILDREN);
-            InvalidateRect(&window_state.hwnd, &window_state.rect, false);
+            InvalidateRect(window, &rect, false);
         }
         thread::sleep(Duration::from_millis(MINIMAL_UPDATE_DELAY as u64)); // ограничиваю максимальную скорость обновления цикла игры
     }
@@ -439,15 +440,15 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
                 WINDOW_STATE_INFO.lock().unwrap().change_hwnd(window);
 
                 let mut rect = RECT::default();
-                let window_size = GetClientRect(window, &mut rect);
+                let window_size = GetClientRect(&window, &mut rect);
 
                 WINDOW_STATE_INFO.lock().unwrap().rect = rect;
                 WINDOW_STATE_INFO.lock().unwrap().width = rect.right;
                 WINDOW_STATE_INFO.lock().unwrap().height = rect.bottom;
 
-                thread::spawn(|| {
+                thread::spawn(move || {
                     // запускаю поток, для работы игрового цикла, что-бы не блокировать цикл обработки событий окна, при долгой обработке игровой логики
-                    start_game_loop(); // запускаю игровой цикл
+                    start_game_loop(&window); // запускаю игровой цикл
                 });
 
                 LRESULT(0)
